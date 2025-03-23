@@ -86,6 +86,7 @@ body {
   box-shadow: inset 3px 3px 6px var(--shadow-dark), inset -3px -3px 6px var(--shadow-light);
 }
 
+
 /* 2. Sprint Details Section */
 .sprint-details-section {
   margin-bottom: 30px;
@@ -301,7 +302,9 @@ body {
 }
 
 .stories-table td {
-  padding: 12px 15px;
+  padding: 1rem;
+  text-align: center;
+  vertical-align: middle;
   background: var(--card-bg);
   box-shadow: 3px 3px 6px var(--shadow-dark), -3px -3px 6px var(--shadow-light);
 }
@@ -656,8 +659,8 @@ body {
 
 /* Status Badge Styles */
 .status-badge {
-  padding: 6px 12px;
-  border-radius: 15px;
+  padding: 0.4rem 0.8rem;
+  border-radius: 20px;
   font-size: 0.9rem;
   font-weight: 500;
   text-transform: capitalize;
@@ -686,6 +689,17 @@ body {
   background-color: #F44336;
   color: white;
   box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.status-badge.happiness_submitted {
+  background-color: #E3F2FD;
+  color: #1976D2;
+}
+
+/* Add the same styling for the Submitted status */
+.status-badge.Submitted {
+  background-color: #E3F2FD;
+  color: #1976D2;
 }
 
 /* Remove Participants Section */
@@ -776,5 +790,148 @@ body {
 
 .end-planning-btn:active {
   box-shadow: inset 3px 3px 6px rgba(0, 0, 0, 0.2), inset -3px -3px 6px rgba(255, 255, 255, 0.1);
+}
+
+.planning-controls {
+  display: flex;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.show-happiness-btn {
+  padding: 0.5rem 1rem;
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.show-happiness-btn:hover {
+  background-color: #45a049;
+}
+
+.end-planning-btn {
+  padding: 0.5rem 1rem;
+  background-color: #f44336;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.end-planning-btn:hover {
+  background-color: #da190b;
+}
+
+.happiness-rating {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background-color: #E8F5E9;
+  color: #2E7D32;
+  font-weight: bold;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.happiness-rating:empty::before {
+  content: "-";
+  color: #757575;
+}
+
+.table-controls {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.control-btn {
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.control-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.show-happiness-btn {
+  background-color: #4CAF50;
+  color: white;
+}
+
+.show-happiness-btn:hover {
+  background-color: #45a049;
+}
+
+.reveal-happiness-btn {
+  background-color: #2196F3;
+  color: white;
+}
+
+.reveal-happiness-btn:hover {
+  background-color: #1976D2;
+}
+
+.reveal-btn {
+  background-color: #FF9800;
+  color: white;
+}
+
+.reveal-btn:hover {
+  background-color: #F57C00;
+}
+
+.happiness-display {
+  text-align: center;
+  font-size: 1.1rem;
+  font-weight: 500;
+}
+
+.happiness-display.revealed .happiness-rating {
+  color: #2196F3;
+  font-weight: 600;
+}
+
+.copy-url-btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: var(--border-radius);
+  background: #2196F3;
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 5px 5px 10px var(--shadow-dark), -5px -5px 10px var(--shadow-light);
+  transition: all 0.3s ease;
+  font-size: 0.9rem;
+}
+
+.copy-url-btn:hover {
+  background: #1976D2;
+  transform: translateY(-2px);
+}
+
+.copy-url-btn:active {
+  box-shadow: inset 3px 3px 6px rgba(0, 0, 0, 0.2), inset -3px -3px 6px rgba(255, 255, 255, 0.1);
+}
+
+/* Update disabled input styles */
+.form-group input:disabled,
+.form-group textarea:disabled,
+.story-input:disabled {
+  background: #f5f5f5;
+  color: #666;
+  cursor: not-allowed;
+  opacity: 0.8;
+  box-shadow: inset 2px 2px 4px rgba(0, 0, 0, 0.1), inset -2px -2px 4px rgba(255, 255, 255, 0.5);
 }
 

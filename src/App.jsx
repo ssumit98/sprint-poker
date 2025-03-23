@@ -1,10 +1,12 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { GiCardKingDiamonds } from "react-icons/gi"
-import { ref, set, onValue, push, update } from "firebase/database"
+import { ref, set, onValue, push, update, get } from "firebase/database"
 import { database } from "./firebase"
 import "./App.css"
+import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom'
+import Documentation from './Documentation'
 
 function App() {
   const [sprintDetails, setSprintDetails] = useState({
@@ -26,6 +28,9 @@ function App() {
   const [participants, setParticipants] = useState({})
   const [roomStatus, setRoomStatus] = useState("waiting") // waiting, voting, revealed
   const [participantStatus, setParticipantStatus] = useState({}) // Track participant statuses
+  const [showHappinessSection, setShowHappinessSection] = useState(false) // Add state for happiness section visibility
+  const [isHappinessRevealed, setIsHappinessRevealed] = useState(false) // Add state for happiness reveal status
+  const newStoryInputRef = useRef(null)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -89,7 +94,8 @@ function App() {
             setParticipantStatus(data.participantStatus || {})
             setActiveStory(data.activeStory)
             setRoomStatus(data.status || "waiting")
-            setIsPokerStarted(true)
+            setShowHappinessSection(data.showHappinessSection || false)
+            setIsHappinessRevealed(data.isHappinessRevealed || false)
           }
         })
       } else if (roomId) {
@@ -153,7 +159,8 @@ function App() {
             setParticipantStatus(data.participantStatus || {})
             setActiveStory(data.activeStory)
             setRoomStatus(data.status || "waiting")
-            setIsPokerStarted(true)
+            setShowHappinessSection(data.showHappinessSection || false)
+            setIsHappinessRevealed(data.isHappinessRevealed || false)
           }
         })
       }
@@ -210,7 +217,8 @@ function App() {
           setParticipantStatus(data.participantStatus || {})
           setActiveStory(data.activeStory)
           setRoomStatus(data.status || "waiting")
-          setIsPokerStarted(true)
+          setShowHappinessSection(data.showHappinessSection || false)
+          setIsHappinessRevealed(data.isHappinessRevealed || false)
         }
       })
     } else {
@@ -226,10 +234,12 @@ function App() {
         status: "waiting",
         createdAt: Date.now(),
         participants: {},
-        participantStatus: {}
+        participantStatus: {},
+        isPokerStarted: false,  // Explicitly set to false initially
+        showHappinessSection: false
       })
       
-      // Save master data to localStorage
+      // Save master data to localStorage without isPokerStarted
       localStorage.setItem('userData', JSON.stringify({
         isMaster: true,
         roomId: newRoomId
@@ -255,7 +265,9 @@ function App() {
           setParticipantStatus(data.participantStatus || {})
           setActiveStory(data.activeStory)
           setRoomStatus(data.status || "waiting")
-          setIsPokerStarted(true)
+          setShowHappinessSection(data.showHappinessSection || false)
+          setIsHappinessRevealed(data.isHappinessRevealed || false)
+          // Don't set isPokerStarted here
         }
       })
     }
@@ -288,12 +300,14 @@ function App() {
 
   const startPoker = () => {
     if (sprintDetails.piName && sprintDetails.sprintName) {
+      // Set isPokerStarted first
       setIsPokerStarted(true)
       
       // Save master data to localStorage
       localStorage.setItem('userData', JSON.stringify({
         isMaster: true,
-        roomId
+        roomId,
+        isPokerStarted: true  // Add this to persist the started state
       }))
       
       // Create initial stories array without undefined points
@@ -312,23 +326,38 @@ function App() {
         status: "waiting",
         createdAt: Date.now(),
         participants: {},
-        participantStatus: {}
+        participantStatus: {},
+        isPokerStarted: true  // Add this to Firebase
       })
-      
-      // Create and copy URL
-      const url = `${window.location.origin}${window.location.pathname}?room=${roomId}`
-      navigator.clipboard.writeText(url)
-        .then(() => {
-          alert("Room URL copied to clipboard!")
-        })
-        .catch(err => {
-          console.error('Failed to copy URL:', err)
-          alert("Room created! Please copy the URL manually: " + url)
-        })
     } else {
       alert("Please fill in the PI Name and Sprint Name")
     }
   }
+
+  const copyRoomUrl = () => {
+    const url = `${window.location.origin}${window.location.pathname}?room=${roomId}`
+    navigator.clipboard.writeText(url)
+      .then(() => {
+        alert("Room URL copied to clipboard!")
+      })
+      .catch(err => {
+        console.error('Failed to copy URL:', err)
+        alert("Please copy the URL manually: " + url)
+      })
+  }
+
+  // Add useEffect to handle isPokerStarted from Firebase
+  useEffect(() => {
+    if (roomId) {
+      const roomRef = ref(database, `rooms/${roomId}`)
+      onValue(roomRef, (snapshot) => {
+        const data = snapshot.val()
+        if (data?.isPokerStarted) {
+          setIsPokerStarted(true)
+        }
+      })
+    }
+  }, [roomId])
 
   const selectActiveStory = (story) => {
     if (isMaster) {
@@ -395,15 +424,30 @@ function App() {
         stories: updatedStories
       }))
 
-      // Then update Firebase with clean data
+      // Get happiness ratings for the current story if happiness section is shown
       const roomRef = ref(database, `rooms/${roomId}`)
-      update(roomRef, {
-        status: "revealed",
-        master: {
-          piName: sprintDetails.piName,
-          sprintName: sprintDetails.sprintName,
-          stories: updatedStories
+      get(roomRef).then((snapshot) => {
+        const data = snapshot.val()
+        const updates = {
+          status: "revealed",
+          master: {
+            piName: sprintDetails.piName,
+            sprintName: sprintDetails.sprintName,
+            stories: updatedStories
+          },
+          activeStory: {
+            ...activeStory,
+            votes: activeStory.votes || {}
+          }
         }
+
+        // Only include happiness ratings if the section is shown
+        if (showHappinessSection) {
+          updates.activeStory.happinessRatings = data?.happinessRatings || {}
+        }
+
+        // Update Firebase with the prepared data
+        update(roomRef, updates)
       })
     }
   }
@@ -433,6 +477,13 @@ function App() {
         { id: prev.stories.length + 1, text: "" }
       ]
     }))
+    
+    // Focus on the new input after it's added
+    setTimeout(() => {
+      if (newStoryInputRef.current) {
+        newStoryInputRef.current.focus()
+      }
+    }, 0)
   }
 
   const generateRoomId = () => {
@@ -440,7 +491,32 @@ function App() {
   }
 
   const submitHappiness = () => {
-    alert(`Happiness index submitted: ${happinessIndex}/10`)
+    if (!isMaster && participantId) {
+      const updates = {}
+      updates[`rooms/${roomId}/participants/${participantId}/happinessRating`] = {
+        rating: happinessIndex,
+        submittedAt: Date.now()
+      }
+      updates[`rooms/${roomId}/participantStatus/${participantId}`] = "happiness_submitted"
+      
+      update(ref(database), updates)
+        .then(() => {
+          alert("Thank you for your feedback!")
+        })
+        .catch(error => {
+          console.error("Error submitting happiness rating:", error)
+          alert("Failed to submit feedback. Please try again.")
+        })
+    }
+  }
+
+  const revealHappiness = () => {
+    if (isMaster) {
+      const roomRef = ref(database, `rooms/${roomId}`)
+      update(roomRef, {
+        isHappinessRevealed: true
+      })
+    }
   }
 
   const handleCardFlip = (storyId) => {
@@ -482,159 +558,252 @@ function App() {
       setParticipants({})
       setRoomStatus("waiting")
       setParticipantStatus({})
+      setShowHappinessSection(false)
       
       // Redirect to home page
       window.location.href = window.location.origin + window.location.pathname
     }
   }
 
+  // Update the useEffect that handles room data to include happiness section visibility
+  useEffect(() => {
+    if (roomId) {
+      const roomRef = ref(database, `rooms/${roomId}`)
+      onValue(roomRef, (snapshot) => {
+        const data = snapshot.val()
+        if (data) {
+          setShowHappinessSection(data.showHappinessSection || false)
+        }
+      })
+    }
+  }, [roomId])
+
+  // Update the stories table to include happiness ratings
+  const renderParticipantsTable = () => {
+    const showHappinessColumn = showHappinessSection
+    const showVotesColumn = !showHappinessSection || roomStatus === "voting"
+    
+    return (
+      <table className="stories-table">
+        <thead>
+          <tr>
+            <th>Sr. No</th>
+            <th>Name</th>
+            <th>Status</th>
+            {showVotesColumn && <th>Vote</th>}
+            {showHappinessColumn && <th>Happiness</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {Object.entries(participants).map(([id, participant], index) => {
+            const happinessRating = participant.happinessRating?.rating || "-"
+            const displayStatus = participantStatus[id] === "happiness_submitted" ? "Submitted" : (participantStatus[id] || 'active')
+            return (
+              <tr key={id}>
+                <td>{index + 1}</td>
+                <td>{participant.name}</td>
+                <td>
+                  <span className={`status-badge ${participantStatus[id] || 'active'}`}>
+                    {displayStatus}
+                  </span>
+                </td>
+                {showVotesColumn && (
+                  <td>
+                    <div 
+                      className={`poker-card ${roomStatus === "revealed" ? 'flipped' : ''}`}
+                    >
+                      <div className="card-inner">
+                        <div className="card-front">
+                          <GiCardKingDiamonds size={60} />
+                        </div>
+                        <div className="card-back">
+                          {roomStatus === "revealed" ? activeStory?.votes?.[id] || "?" : "?"}
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                )}
+                {showHappinessColumn && (
+                  <td>
+                    <div className={`happiness-display ${isHappinessRevealed ? 'revealed' : ''}`}>
+                      {isHappinessRevealed ? (
+                        <span className="happiness-rating">
+                          {happinessRating}
+                        </span>
+                      ) : (
+                        participantStatus[id] === "happiness_submitted" ? "✓" : "-"
+                      )}
+                    </div>
+                  </td>
+                )}
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    )
+  }
+
   return (
+    <Router>
+      <Routes>
+        <Route path="/documentation" element={<Documentation />} />
+        <Route path="/" element={
     <div className="app-container">
-      {/* Name Modal */}
-      {showNameModal && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <h2>Enter Your Name</h2>
-            <input
-              type="text"
-              value={participantName}
-              onChange={(e) => setParticipantName(e.target.value)}
-              placeholder="Your name"
-            />
-            <button onClick={handleNameSubmit}>Join Session</button>
-          </div>
-        </div>
-      )}
+            {/* Name Modal */}
+            {showNameModal && (
+              <div className="modal-overlay">
+                <div className="modal-content">
+                  <h2>Enter Your Name</h2>
+                  <input
+                    type="text"
+                    value={participantName}
+                    onChange={(e) => setParticipantName(e.target.value)}
+                    placeholder="Your name"
+                  />
+                  <button onClick={handleNameSubmit}>Join Session</button>
+                </div>
+              </div>
+            )}
 
       {/* 1. Navbar Section */}
       <nav className="navbar">
-        <div className="logo">
-          Poker Sprint Planner
-          {!isMaster && isPokerStarted && (
-            <span className="sprint-info">
-              | PI: {sprintDetails.piName} | Sprint: {sprintDetails.sprintName}
-            </span>
-          )}
+              <div className="logo">
+                Poker Sprint Planner
+                {!isMaster && isPokerStarted && (
+                  <span className="sprint-info">
+                    | PI: {sprintDetails.piName} | Sprint: {sprintDetails.sprintName}
+                  </span>
+                )}
+              </div>
+              {isMaster && (
+        <div className="nav-links">
+          <span>Home</span>
+                <span> <Link to="/documentation" className="nav-link">Documentation</Link></span>
         </div>
-        {isMaster && (
-          <div className="nav-links">
-            <span>Home</span>
-            <span>Dashboard</span>
-            <span>History</span>
-          </div>
-        )}
+              )}
       </nav>
 
-      {/* 2. Sprint Details Section - Only show for master */}
-      {isMaster && (
-        <section className="sprint-details-section">
-          <h2>Sprint Details</h2>
-          <div className="form-container">
-            <div className="form-group">
-              <label htmlFor="piName">PI Name</label>
-              <input
-                type="text"
-                id="piName"
-                name="piName"
-                value={sprintDetails.piName}
-                onChange={handleInputChange}
-                placeholder="Enter PI Name"
-              />
-            </div>
-            <div className="form-group">
-              <label htmlFor="sprintName">Sprint Name</label>
-              <input
-                type="text"
-                id="sprintName"
-                name="sprintName"
-                value={sprintDetails.sprintName}
-                onChange={handleInputChange}
-                placeholder="Enter Sprint Name"
-              />
-            </div>
-            <div className="form-group stories-group">
-              <label>Sprint Stories</label>
-              <div className="stories-inputs">
-                {sprintDetails.stories.map((story) => (
-                  <div key={story.id} className="story-input-container">
-                    <input
-                      type="text"
-                      value={story.text}
-                      onChange={(e) => handleInputChange(e, story.id)}
-                      placeholder="Enter story"
-                      className="story-input"
-                    />
-                    {story.id === sprintDetails.stories.length && (
-                      <button className="add-story-btn" onClick={addStoryInput}>
-                        +
-                      </button>
-                    )}
+            {/* 2. Sprint Details Section - Only show for master */}
+            {isMaster && (
+      <section className="sprint-details-section">
+        <h2>Sprint Details</h2>
+        <div className="form-container">
+          <div className="form-group">
+            <label htmlFor="piName">PI Name</label>
+            <input
+              type="text"
+              id="piName"
+              name="piName"
+              value={sprintDetails.piName}
+              onChange={handleInputChange}
+              placeholder="Enter PI Name"
+                      disabled={isPokerStarted}
+            />
+          </div>
+          <div className="form-group">
+            <label htmlFor="sprintName">Sprint Name</label>
+            <input
+              type="text"
+              id="sprintName"
+              name="sprintName"
+              value={sprintDetails.sprintName}
+              onChange={handleInputChange}
+              placeholder="Enter Sprint Name"
+                      disabled={isPokerStarted}
+            />
+          </div>
+                  <div className="form-group stories-group">
+                    <label>Sprint Stories</label>
+                    <div className="stories-inputs">
+                      {sprintDetails.stories.map((story) => (
+                        <div key={story.id} className="story-input-container">
+                          <input
+                            type="text"
+                            value={story.text}
+                            onChange={(e) => handleInputChange(e, story.id)}
+                            placeholder="Enter story"
+                            className="story-input"
+                            disabled={isPokerStarted}
+                            ref={story.id === sprintDetails.stories.length ? newStoryInputRef : null}
+                          />
+                          {story.id === sprintDetails.stories.length && !isPokerStarted && (
+                            <button className="add-story-btn" onClick={addStoryInput}>
+                              +
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                ))}
-              </div>
-            </div>
           </div>
-          <div className="start-poker-container">
-            <button className="start-poker-btn" onClick={startPoker}>
-              Start Poker
-            </button>
-          </div>
-        </section>
-      )}
+                <div className="start-poker-container">
+                  {!isPokerStarted ? (
+          <button className="start-poker-btn" onClick={startPoker}>
+            Start Poker
+          </button>
+                  ) : (
+                    <button className="copy-url-btn" onClick={copyRoomUrl}>
+                      Copy Room URL
+                    </button>
+                  )}
+                </div>
+              </section>
+            )}
 
-      {/* Active Stories Container - Show for both master and slaves */}
-      {isPokerStarted && roomId && (
-        <section className="active-stories-section">
-          <h2>Stories to discuss</h2>
-          <div className="active-stories-container">
-            <div className="active-stories-list">
-              {sprintDetails.stories.map((story) => (
-                <div key={story.id} className="active-story-item">
-                  <span>{story.text}</span>
-                  <div className="story-actions">
-                    {story.points !== undefined && (
-                      <span className="story-points">Points: {story.points}</span>
-                    )}
-                    {isMaster ? (
-                      <button 
-                        className={`story-btn ${activeStory?.id === story.id ? 'active' : ''}`}
-                        onClick={() => selectActiveStory(story)}
-                        disabled={roomStatus === "voting"}
-                      >
-                        {activeStory?.id === story.id 
-                          ? 'Active' 
-                          : story.points !== undefined 
-                            ? 'Revisit' 
-                            : 'Set Active'}
-                      </button>
-                    ) : (
-                      <button 
-                        className={`story-btn ${activeStory?.id === story.id ? 'active' : ''}`}
-                        disabled
-                      >
-                        {activeStory?.id === story.id ? 'Active' : ''}
-                      </button>
-                    )}
+            {/* Active Stories Container - Show for both master and slaves */}
+            {isPokerStarted && roomId && (
+              <section className="active-stories-section">
+                <h2>Stories to discuss</h2>
+                <div className="active-stories-container">
+                  <div className="active-stories-list">
+                    {sprintDetails.stories.map((story) => (
+                      <div key={story.id} className="active-story-item">
+                        <span>{story.text}</span>
+                        <div className="story-actions">
+                          {story.points !== undefined && (
+                            <span className="story-points">Points: {story.points}</span>
+                          )}
+                          {isMaster ? (
+                            <button 
+                              className={`story-btn ${activeStory?.id === story.id ? 'active' : ''}`}
+                              onClick={() => selectActiveStory(story)}
+                              disabled={roomStatus === "voting"}
+                            >
+                              {activeStory?.id === story.id 
+                                ? 'Active' 
+                                : story.points !== undefined 
+                                  ? 'Revisit' 
+                                  : 'Set Active'}
+                            </button>
+                          ) : (
+                            <button 
+                              className={`story-btn ${activeStory?.id === story.id ? 'active' : ''}`}
+                              disabled
+                            >
+                              {activeStory?.id === story.id ? 'Active' : ''}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
-              ))}
-            </div>
-          </div>
-        </section>
-      )}
+              </section>
+            )}
 
-      {/* Active Story Section - Hide for master */}
-      {isPokerStarted && roomId && activeStory && !isMaster && (
-        <section className="active-story-section">
-          <h2>Current Story</h2>
-          <div className="active-story-card">
-            {activeStory.text}
-          </div>
-        </section>
-      )}
+            {/* Active Story Section - Hide for master */}
+            {isPokerStarted && roomId && activeStory && !isMaster && (
+              <section className="active-story-section">
+                <h2>Current Story</h2>
+                <div className="active-story-card">
+                  {activeStory.text}
+        </div>
+      </section>
+            )}
 
-      {/* Sprint Points Section - Hide for master */}
-      {isPokerStarted && roomId && roomStatus === "voting" && !isMaster && (
+            {/* Sprint Points Section - Hide for master */}
+            {isPokerStarted && roomId && roomStatus === "voting" && !isMaster && (
         <section className="sprint-points-section">
           <h2>Select Story Points</h2>
           <div className="points-container">
@@ -652,58 +821,58 @@ function App() {
       )}
 
       {/* 4. Stories Table Section */}
-      {isPokerStarted && roomId && (
+            {isPokerStarted && roomId && (
         <section className="stories-table-section">
-          <h2>Participants</h2>
-          <table className="stories-table">
-            <thead>
-              <tr>
-                <th>Sr. No</th>
-                <th>Name</th>
-                <th>Status</th>
-                <th>Vote</th>
-              </tr>
-            </thead>
-            <tbody>
-              {Object.entries(participants).map(([id, participant], index) => (
-                <tr key={id}>
-                  <td>{index + 1}</td>
-                  <td>{participant.name}</td>
-                  <td>
-                    <span className={`status-badge ${participantStatus[id] || 'active'}`}>
-                      {participantStatus[id] || 'active'}
-                    </span>
-                  </td>
-                  <td>
-                    <div 
-                      className={`poker-card ${roomStatus === "revealed" ? 'flipped' : ''}`}
-                    >
-                      <div className="card-inner">
-                        <div className="card-front">
-                          <GiCardKingDiamonds size={60} />
-                        </div>
-                        <div className="card-back">
-                          {roomStatus === "revealed" ? activeStory?.votes?.[id] || "?" : "?"}
-                        </div>
-                      </div>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {isMaster && roomStatus === "voting" && (
-            <div className="reveal-votes-container">
-              <button className="reveal-btn" onClick={revealVotes}>
-                Reveal Votes
-              </button>
-            </div>
-          )}
+                <h2>Participants</h2>
+                {renderParticipantsTable()}
+                {isMaster && (
+                  <div className="table-controls">
+                    {!showHappinessSection ? (
+                      <>
+                        <button 
+                          className="show-happiness-btn control-btn" 
+                          onClick={() => {
+                            const roomRef = ref(database, `rooms/${roomId}`)
+                            update(roomRef, {
+                              showHappinessSection: true,
+                              isHappinessRevealed: false
+                            })
+                          }}
+                        >
+                          Show Happiness Survey
+                        </button>
+                        {roomStatus === "voting" && (
+                          <button className="reveal-btn control-btn" onClick={revealVotes}>
+                            Reveal Votes
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      <button 
+                        className="reveal-happiness-btn control-btn" 
+                        onClick={revealHappiness}
+                      >
+                        Reveal Happiness Feedback
+                      </button>
+                    )}
+                  </div>
+                )}
+              </section>
+            )}
+
+            {/* End Planning Button - Only show for master */}
+            {isPokerStarted && roomId && isMaster && (
+              <section className="end-planning-section">
+                <div className="planning-controls">
+                  <button className="end-planning-btn" onClick={handleEndPlanning}>
+                    End Planning & Delete Data
+                  </button>
+                </div>
         </section>
       )}
 
-      {/* 5. Happiness Index Section */}
-      {isPokerStarted && roomId && roomStatus === "revealed" && (
+            {/* 5. Happiness Index Section - Only show for slaves when enabled */}
+            {isPokerStarted && roomId && showHappinessSection && !isMaster && (
         <section className="happiness-section">
           <h2>Happiness Index</h2>
           <div className="happiness-container">
@@ -725,16 +894,10 @@ function App() {
           </div>
         </section>
       )}
-
-      {/* End Planning Button - Only show for master */}
-      {isPokerStarted && roomId && isMaster && (
-        <section className="end-planning-section">
-          <button className="end-planning-btn" onClick={handleEndPlanning}>
-            End Planning & Delete Data
-          </button>
-        </section>
-      )}
     </div>
+        } />
+      </Routes>
+    </Router>
   )
 }
 
