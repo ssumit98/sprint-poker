@@ -33,6 +33,7 @@ const Documentation = () => {
               <li>Click "Start Poker" to begin session</li>
               <li>Share the generated URL with team</li>
               <li>Control story selection and voting reveals</li>
+              <li>Delete stories when done</li>
             </ol>
 
             <h3>For Team Members</h3>

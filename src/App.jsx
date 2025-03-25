@@ -31,6 +31,9 @@ function App() {
   const [showHappinessSection, setShowHappinessSection] = useState(false) // Add state for happiness section visibility
   const [isHappinessRevealed, setIsHappinessRevealed] = useState(false) // Add state for happiness reveal status
   const newStoryInputRef = useRef(null)
+  const [hasUserData, setHasUserData] = useState(false)
+  const [editingStoryId, setEditingStoryId] = useState(null)
+  const [editingStoryText, setEditingStoryText] = useState("")
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -222,54 +225,18 @@ function App() {
         }
       })
     } else {
-      // New master creating a new room
+      // New master without room
       setIsMaster(true)
-      const newRoomId = generateRoomId()
-      setRoomId(newRoomId)
-      
-      // Create initial room data
-      const roomRef = ref(database, `rooms/${newRoomId}`)
-      set(roomRef, {
-        master: sprintDetails,
-        status: "waiting",
-        createdAt: Date.now(),
-        participants: {},
-        participantStatus: {},
-        isPokerStarted: false,  // Explicitly set to false initially
-        showHappinessSection: false
-      })
-      
-      // Save master data to localStorage without isPokerStarted
-      localStorage.setItem('userData', JSON.stringify({
-        isMaster: true,
-        roomId: newRoomId
-      }))
-      
-      // Subscribe to room updates for new master
-      onValue(roomRef, (snapshot) => {
-        const data = snapshot.val()
-        if (data) {
-          // Update all master data from Firebase
-          if (data.master) {
-            setSprintDetails({
-              ...data.master,
-              stories: data.master.stories.map(story => ({
-                ...story,
-                points: story.points || undefined
-              }))
-            })
-          }
-          
-          setStories(data.master?.stories || [])
-          setParticipants(data.participants || {})
-          setParticipantStatus(data.participantStatus || {})
-          setActiveStory(data.activeStory)
-          setRoomStatus(data.status || "waiting")
-          setShowHappinessSection(data.showHappinessSection || false)
-          setIsHappinessRevealed(data.isHappinessRevealed || false)
-          // Don't set isPokerStarted here
-        }
-      })
+      setShowNameModal(false)
+    }
+  }, [])
+
+  // Update the useEffect that checks for user data
+  useEffect(() => {
+    const savedUserData = localStorage.getItem('userData')
+    if (savedUserData) {
+      const { participantName, isMaster: savedIsMaster } = JSON.parse(savedUserData)
+      setHasUserData(!!participantName || savedIsMaster)
     }
   }, [])
 
@@ -298,16 +265,45 @@ function App() {
     }
   }
 
+  // Add a helper function to reset all state
+  const resetAllState = () => {
+    setSprintDetails({
+      piName: "",
+      sprintName: "",
+      stories: [{ id: 1, text: "" }],
+    })
+    setSelectedPoint(null)
+    setStories([])
+    setHappinessIndex(5)
+    setIsPokerStarted(false)
+    setFlippedCards({})
+    setIsMaster(true)
+    setRoomId(null)
+    setParticipantName("")
+    setParticipantId(null)
+    setShowNameModal(true)
+    setActiveStory(null)
+    setParticipants({})
+    setRoomStatus("waiting")
+    setParticipantStatus({})
+    setShowHappinessSection(false)
+    setHasUserData(false)
+  }
+
   const startPoker = () => {
     if (sprintDetails.piName && sprintDetails.sprintName) {
+      // Generate new room ID
+      const newRoomId = generateRoomId()
+      setRoomId(newRoomId)
+      
       // Set isPokerStarted first
       setIsPokerStarted(true)
       
       // Save master data to localStorage
       localStorage.setItem('userData', JSON.stringify({
         isMaster: true,
-        roomId,
-        isPokerStarted: true  // Add this to persist the started state
+        roomId: newRoomId,
+        isPokerStarted: true
       }))
       
       // Create initial stories array without undefined points
@@ -316,9 +312,9 @@ function App() {
         text: story.text
       }))
       
-      // Update room in Firebase
-      const roomRef = ref(database, `rooms/${roomId}`)
-      update(roomRef, {
+      // Create room in Firebase
+      const roomRef = ref(database, `rooms/${newRoomId}`)
+      set(roomRef, {
         master: {
           ...sprintDetails,
           stories: initialStories
@@ -327,7 +323,8 @@ function App() {
         createdAt: Date.now(),
         participants: {},
         participantStatus: {},
-        isPokerStarted: true  // Add this to Firebase
+        isPokerStarted: true,
+        showHappinessSection: false
       })
     } else {
       alert("Please fill in the PI Name and Sprint Name")
@@ -530,35 +527,17 @@ function App() {
     if (window.confirm('Are you sure you want to end planning and delete all data? This action cannot be undone.')) {
       // Delete room data from Firebase and mark as ended
       const roomRef = ref(database, `rooms/${roomId}`)
+      const currentTimestamp = new Date().getTime() // Get current timestamp in milliseconds
       set(roomRef, {
         ended: true,
-        endedAt: Date.now()
+        endedAt: currentTimestamp
       })
       
       // Clear local storage for master
       localStorage.clear()
       
       // Reset all state variables
-      setSprintDetails({
-        piName: "",
-        sprintName: "",
-        stories: [{ id: 1, text: "" }],
-      })
-      setSelectedPoint(null)
-      setStories([])
-      setHappinessIndex(5)
-      setIsPokerStarted(false)
-      setFlippedCards({})
-      setIsMaster(true)
-      setRoomId(null)
-      setParticipantName("")
-      setParticipantId(null)
-      setShowNameModal(true)
-      setActiveStory(null)
-      setParticipants({})
-      setRoomStatus("waiting")
-      setParticipantStatus({})
-      setShowHappinessSection(false)
+      resetAllState()
       
       // Redirect to home page
       window.location.href = window.location.origin + window.location.pathname
@@ -575,6 +554,48 @@ function App() {
           setShowHappinessSection(data.showHappinessSection || false)
         }
       })
+    }
+  }, [roomId])
+
+  // Add useEffect to handle room data subscription
+  useEffect(() => {
+    if (roomId) {
+      const roomRef = ref(database, `rooms/${roomId}`)
+      const unsubscribe = onValue(roomRef, (snapshot) => {
+        const data = snapshot.val()
+        if (data) {
+          // If room is ended, clear local storage and redirect
+          if (data.ended) {
+            localStorage.clear()
+            resetAllState()
+            window.location.href = window.location.origin + window.location.pathname
+            return
+          }
+
+          // Update all data from Firebase
+          if (data.master) {
+            setSprintDetails({
+              ...data.master,
+              stories: data.master.stories.map(story => ({
+                ...story,
+                points: story.points || undefined
+              }))
+            })
+          }
+          
+          setStories(data.master?.stories || [])
+          setParticipants(data.participants || {})
+          setParticipantStatus(data.participantStatus || {})
+          setActiveStory(data.activeStory)
+          setRoomStatus(data.status || "waiting")
+          setShowHappinessSection(data.showHappinessSection || false)
+          setIsHappinessRevealed(data.isHappinessRevealed || false)
+          setIsPokerStarted(data.isPokerStarted || false)
+        }
+      })
+
+      // Cleanup subscription on unmount or when roomId changes
+      return () => unsubscribe()
     }
   }, [roomId])
 
@@ -642,6 +663,90 @@ function App() {
         </tbody>
       </table>
     )
+  }
+
+  // Add this function to handle session deletion
+  const handleDeleteSession = () => {
+    if (window.confirm('Are you sure you want to delete your session and exit?')) {
+      // Clear localStorage
+      localStorage.clear()
+      
+      // If user is a participant, update their status in Firebase
+      if (participantId && roomId) {
+        const updates = {}
+        updates[`rooms/${roomId}/participants/${participantId}`] = null
+        updates[`rooms/${roomId}/participantStatus/${participantId}`] = null
+        update(ref(database), updates)
+          .then(() => {
+            // Reset all state variables
+            resetAllState()
+            
+            // Redirect to home page
+            window.location.href = window.location.origin + window.location.pathname
+          })
+          .catch(error => {
+            console.error("Error deleting session:", error)
+            window.location.href = window.location.origin + window.location.pathname
+          })
+      } else if (isMaster && roomId) {
+        // If user is master, mark the room as ended
+        const roomRef = ref(database, `rooms/${roomId}`)
+        set(roomRef, {
+          ended: true,
+          endedAt: Date.now()
+        })
+          .then(() => {
+            // Reset all state variables
+            resetAllState()
+            
+            // Redirect to home page
+            window.location.href = window.location.origin + window.location.pathname
+          })
+          .catch(error => {
+            console.error("Error ending room:", error)
+            window.location.href = window.location.origin + window.location.pathname
+          })
+      } else {
+        // Reset all state variables
+        resetAllState()
+        
+        // Redirect to home page
+        window.location.href = window.location.origin + window.location.pathname
+      }
+    }
+  }
+
+  const handleEditStory = (story) => {
+    setEditingStoryId(story.id)
+    setEditingStoryText(story.text)
+  }
+
+  const handleSubmitEdit = (storyId) => {
+    if (editingStoryText.trim()) {
+      // Update local state
+      setSprintDetails(prev => ({
+        ...prev,
+        stories: prev.stories.map(story => 
+          story.id === storyId ? { ...story, text: editingStoryText } : story
+        )
+      }))
+
+      // Update Firebase
+      const roomRef = ref(database, `rooms/${roomId}`)
+      update(roomRef, {
+        master: {
+          ...sprintDetails,
+          stories: sprintDetails.stories.map(story => ({
+            id: story.id,
+            text: story.id === storyId ? editingStoryText : story.text,
+            points: story.points || null // Preserve points, use null if undefined
+          }))
+        }
+      })
+
+      setEditingStoryId(null)
+      setEditingStoryText("")
+    }
   }
 
   return (
@@ -713,29 +818,30 @@ function App() {
                       disabled={isPokerStarted}
             />
           </div>
-                  <div className="form-group stories-group">
-                    <label>Sprint Stories</label>
-                    <div className="stories-inputs">
-                      {sprintDetails.stories.map((story) => (
-                        <div key={story.id} className="story-input-container">
-                          <input
-                            type="text"
-                            value={story.text}
-                            onChange={(e) => handleInputChange(e, story.id)}
-                            placeholder="Enter story"
-                            className="story-input"
-                            disabled={isPokerStarted}
-                            ref={story.id === sprintDetails.stories.length ? newStoryInputRef : null}
-                          />
-                          {story.id === sprintDetails.stories.length && !isPokerStarted && (
-                            <button className="add-story-btn" onClick={addStoryInput}>
-                              +
-                            </button>
-                          )}
-                        </div>
-                      ))}
+                  {!isPokerStarted && (
+                    <div className="form-group stories-group">
+                      <label>Sprint Stories</label>
+                      <div className="stories-inputs">
+                        {sprintDetails.stories.map((story) => (
+                          <div key={story.id} className="story-input-container">
+                            <input
+                              type="text"
+                              value={story.text}
+                              onChange={(e) => handleInputChange(e, story.id)}
+                              placeholder="Enter story"
+                              className="story-input"
+                              ref={story.id === sprintDetails.stories.length ? newStoryInputRef : null}
+                            />
+                            {story.id === sprintDetails.stories.length && (
+                              <button className="add-story-btn" onClick={addStoryInput}>
+                                +
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  )}
           </div>
                 <div className="start-poker-container">
                   {!isPokerStarted ? (
@@ -759,30 +865,58 @@ function App() {
                   <div className="active-stories-list">
                     {sprintDetails.stories.map((story) => (
                       <div key={story.id} className="active-story-item">
-                        <span>{story.text}</span>
+                        {editingStoryId === story.id ? (
+                          <div className="story-edit-container">
+                            <input
+                              type="text"
+                              value={editingStoryText}
+                              onChange={(e) => setEditingStoryText(e.target.value)}
+                              className="story-edit-input"
+                              autoFocus
+                            />
+                            <button 
+                              className="story-submit-btn"
+                              onClick={() => handleSubmitEdit(story.id)}
+                            >
+                              ✓
+                            </button>
+                            <button 
+                              className="story-cancel-btn"
+                              onClick={() => {
+                                setEditingStoryId(null)
+                                setEditingStoryText("")
+                              }}
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ) : (
+                          <span>{story.text}</span>
+                        )}
                         <div className="story-actions">
                           {story.points !== undefined && (
                             <span className="story-points">Points: {story.points}</span>
                           )}
-                          {isMaster ? (
-                            <button 
-                              className={`story-btn ${activeStory?.id === story.id ? 'active' : ''}`}
-                              onClick={() => selectActiveStory(story)}
-                              disabled={roomStatus === "voting"}
-                            >
-                              {activeStory?.id === story.id 
-                                ? 'Active' 
-                                : story.points !== undefined 
-                                  ? 'Revisit' 
-                                  : 'Set Active'}
-                            </button>
-                          ) : (
-                            <button 
-                              className={`story-btn ${activeStory?.id === story.id ? 'active' : ''}`}
-                              disabled
-                            >
-                              {activeStory?.id === story.id ? 'Active' : ''}
-                            </button>
+                          {isMaster && (
+                            <>
+                              <button 
+                                className="story-edit-btn"
+                                onClick={() => handleEditStory(story)}
+                              >
+                                ✎
+                              </button>
+                              <button 
+                                className={`story-btn ${activeStory?.id === story.id ? 'active' : ''}`}
+                                onClick={() => selectActiveStory(story)}
+                                disabled={roomStatus === "voting"}
+                              >
+                                {activeStory?.id === story.id 
+                                  ? 'Active' 
+                                  : story.points !== undefined 
+                                    ? 'Revisit' 
+                                    : 'Set Active'}
+                              </button>
+                            </>
                           )}
                         </div>
                       </div>
@@ -890,6 +1024,17 @@ function App() {
             </div>
             <button className="submit-btn" onClick={submitHappiness}>
               Submit Feedback
+            </button>
+          </div>
+        </section>
+      )}
+
+      {/* Update the session controls section */}
+      {hasUserData && !(isMaster && isPokerStarted) && (
+        <section className="session-controls-section">
+          <div className="session-controls">
+            <button className="delete-session-btn" onClick={handleDeleteSession}>
+              Delete Session & Exit
             </button>
           </div>
         </section>
