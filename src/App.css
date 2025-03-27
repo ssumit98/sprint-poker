@@ -220,6 +220,7 @@ body {
 
 /* 3. Sprint Points Section */
 .sprint-points-section {
+  position: relative;
   margin-bottom: 30px;
   padding: 25px;
   border-radius: var(--border-radius);
@@ -1030,5 +1031,228 @@ body {
 
 .story-cancel-btn {
   color: #f44336;
+}
+
+.timer-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  background: var(--card-bg);
+  padding: 6px 12px;
+  border-radius: var(--border-radius);
+  box-shadow: 3px 3px 6px var(--shadow-dark), -3px -3px 6px var(--shadow-light);
+}
+
+.timer-display {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--primary);
+  min-width: 50px;
+  text-align: center;
+  background: var(--card-bg);
+  padding: 6px 12px;
+  border-radius: var(--border-radius);
+  box-shadow: inset 2px 2px 4px var(--shadow-dark), inset -2px -2px 4px var(--shadow-light);
+}
+
+.timer-reduce-btn,
+.timer-add-btn,
+.timer-start-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: var(--card-bg);
+  color: var(--primary);
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 3px 3px 6px var(--shadow-dark), -3px -3px 6px var(--shadow-light);
+  transition: all 0.3s ease;
+}
+
+.timer-reduce-btn:hover,
+.timer-add-btn:hover,
+.timer-start-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 4px 4px 8px var(--shadow-dark), -4px -4px 8px var(--shadow-light);
+}
+
+.timer-reduce-btn:active,
+.timer-add-btn:active,
+.timer-start-btn:active {
+  transform: translateY(1px);
+  box-shadow: inset 2px 2px 4px var(--shadow-dark), inset -2px -2px 4px var(--shadow-light);
+}
+
+.timer-start-btn {
+  width: auto;
+  padding: 0 16px;
+  font-size: 14px;
+  background: var(--primary);
+  color: white;
+  border-radius: 16px;
+}
+
+/* Update participants title to accommodate timer controls */
+.participants-title {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--primary);
+  margin-bottom: 15px;
+}
+
+/* Add styles for slave timer display */
+.slave-timer-display {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  background: var(--card-bg);
+  padding: 8px 16px;
+  border-radius: var(--border-radius);
+  box-shadow: 3px 3px 6px var(--shadow-dark), -3px -3px 6px var(--shadow-light);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 10;
+}
+
+.slave-timer-label {
+  font-size: 14px;
+  color: var(--primary);
+  font-weight: 500;
+}
+
+.slave-timer-value {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--primary);
+  min-width: 40px;
+  text-align: center;
+  background: var(--card-bg);
+  padding: 4px 8px;
+  border-radius: var(--border-radius);
+  box-shadow: inset 2px 2px 4px var(--shadow-dark), inset -2px -2px 4px var(--shadow-light);
+}
+
+/* Timer warning styles */
+.timer-display.warning {
+  color: #FF9800;
+  animation: blink 1s infinite;
+}
+
+.timer-display.danger {
+  color: #f44336;
+  animation: blink 0.5s infinite;
+}
+
+.slave-timer-value.warning {
+  color: #FF9800;
+  animation: blink 1s infinite;
+}
+
+.slave-timer-value.danger {
+  color: #f44336;
+  animation: blink 0.5s infinite;
+}
+
+@keyframes blink {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.story-points-edit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.story-points-input {
+  width: 60px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: var(--border-radius);
+  background: var(--card-bg);
+  color: var(--text-color);
+  box-shadow: inset 2px 2px 4px var(--shadow-dark), inset -2px -2px 4px var(--shadow-light);
+  transition: all 0.3s ease;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.story-points-input:focus {
+  outline: none;
+  box-shadow: inset 3px 3px 6px var(--shadow-dark), inset -3px -3px 6px var(--shadow-light);
+}
+
+.story-points-input::-webkit-inner-spin-button,
+.story-points-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.download-section {
+  display: flex;
+  justify-content: center;
+  margin-top: 30px;
+  padding: 20px;
+}
+
+.download-pdf-btn {
+  padding: 12px 25px;
+  border: none;
+  border-radius: var(--border-radius);
+  background: var(--primary);
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 5px 5px 10px var(--shadow-dark), -5px -5px 10px var(--shadow-light);
+  transition: all 0.3s ease;
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.download-pdf-btn:hover {
+  background: var(--primary-light);
+  transform: translateY(-2px);
+  box-shadow: 6px 6px 12px var(--shadow-dark), -6px -6px 12px var(--shadow-light);
+}
+
+.download-pdf-btn:active {
+  transform: translateY(1px);
+  box-shadow: inset 3px 3px 6px rgba(0, 0, 0, 0.2), inset -3px -3px 6px rgba(255, 255, 255, 0.1);
+}
+
+.download-pdf-btn::before {
+  content: "📄";
+  font-size: 1.2rem;
+}
+
+.download-pdf-btn:hover::before {
+  animation: bounce 0.5s ease;
+}
+
+@keyframes bounce {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
 }
 

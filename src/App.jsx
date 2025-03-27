@@ -7,6 +7,8 @@ import { database } from "./firebase"
 import "./App.css"
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom'
 import Documentation from './Documentation'
+import jsPDF from 'jspdf'
+import 'jspdf-autotable'
 
 function App() {
   const [sprintDetails, setSprintDetails] = useState({
@@ -34,6 +36,9 @@ function App() {
   const [hasUserData, setHasUserData] = useState(false)
   const [editingStoryId, setEditingStoryId] = useState(null)
   const [editingStoryText, setEditingStoryText] = useState("")
+  const [timerDuration, setTimerDuration] = useState(30)
+  const [isTimerRunning, setIsTimerRunning] = useState(false)
+  const [timeLeft, setTimeLeft] = useState(30)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -599,6 +604,114 @@ function App() {
     }
   }, [roomId])
 
+  const handleAddTime = () => {
+    if (isMaster) {
+      // If timer has ended (timeLeft is 0), start fresh with 30 seconds
+      const newDuration = timeLeft === 0 ? 30 : timerDuration + 30;
+      setTimerDuration(newDuration);
+      setTimeLeft(newDuration);
+      
+      // Update Firebase with new duration
+      const roomRef = ref(database, `rooms/${roomId}`);
+      update(roomRef, {
+        timerDuration: newDuration,
+        timeLeft: newDuration,
+        isTimerRunning: false
+      });
+    }
+  }
+
+  const handleStartTimer = () => {
+    if (isMaster) {
+      setIsTimerRunning(true);
+      
+      // Update Firebase with timer status
+      const roomRef = ref(database, `rooms/${roomId}`);
+      update(roomRef, {
+        isTimerRunning: true,
+        timeLeft: timerDuration
+      });
+    }
+  }
+
+  const handleReduceTime = () => {
+    if (isMaster) {
+      // Don't reduce if current duration is 30 or less
+      if (timerDuration <= 30) return;
+      
+      const newDuration = timerDuration - 30;
+      setTimerDuration(newDuration);
+      setTimeLeft(newDuration);
+      
+      // Update Firebase with new duration
+      const roomRef = ref(database, `rooms/${roomId}`);
+      update(roomRef, {
+        timerDuration: newDuration,
+        timeLeft: newDuration,
+        isTimerRunning: false
+      });
+    }
+  }
+
+  // Update the useEffect for timer functionality
+  useEffect(() => {
+    let timer;
+    if (isTimerRunning && timeLeft > 0) {
+      timer = setInterval(() => {
+        setTimeLeft(prev => {
+          const newTime = prev - 1;
+          // Update Firebase with new time
+          const roomRef = ref(database, `rooms/${roomId}`);
+          update(roomRef, {
+            timeLeft: newTime
+          });
+
+          if (newTime <= 0) {
+            setIsTimerRunning(false);
+            // Reset both timeLeft and timerDuration to 0
+            setTimeLeft(0);
+            setTimerDuration(0);
+            // Auto reveal votes when timer ends
+            if (isMaster) {
+              revealVotes();
+            }
+            // Update Firebase to stop timer and reset duration
+            update(roomRef, {
+              isTimerRunning: false,
+              timeLeft: 0,
+              timerDuration: 0
+            });
+            return 0;
+          }
+          return newTime;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [isTimerRunning, timeLeft, isMaster, roomId]);
+
+  // Update the useEffect that syncs timer state from Firebase
+  useEffect(() => {
+    if (roomId) {
+      const roomRef = ref(database, `rooms/${roomId}`);
+      const unsubscribe = onValue(roomRef, (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+          if (data.isTimerRunning !== undefined) {
+            setIsTimerRunning(data.isTimerRunning);
+          }
+          if (data.timeLeft !== undefined) {
+            setTimeLeft(data.timeLeft);
+          }
+          if (data.timerDuration !== undefined) {
+            setTimerDuration(data.timerDuration);
+          }
+        }
+      });
+      return () => unsubscribe();
+    }
+  }, [roomId]);
+
   // Update the stories table to include happiness ratings
   const renderParticipantsTable = () => {
     const showHappinessColumn = showHappinessSection
@@ -749,6 +862,77 @@ function App() {
     }
   }
 
+  // Update the generatePDF function
+  const generatePDF = (sprintDetails) => {
+    const doc = new jsPDF();
+    
+    // Add title
+    doc.setFontSize(20);
+    doc.text('Poker Sprint Planner', 105, 20, { align: 'center' });
+    doc.setFontSize(16);
+    doc.text(`${sprintDetails.piName} - ${sprintDetails.sprintName}`, 105, 30, { align: 'center' });
+    
+    // Add table headers
+    doc.setFontSize(12);
+    doc.setFillColor(74, 111, 165);
+    doc.setTextColor(255);
+    doc.rect(20, 40, 170, 10, 'F');
+    doc.text('Sr. No.', 30, 47);
+    doc.text('Story Name', 70, 47);
+    doc.text('Story Points', 150, 47);
+    
+    // Reset text color
+    doc.setTextColor(0);
+    
+    // Add table rows
+    let y = 50;
+    sprintDetails.stories.forEach((story, index) => {
+      // Alternate row colors
+      if (index % 2 === 0) {
+        doc.setFillColor(240, 240, 240);
+      } else {
+        doc.setFillColor(255, 255, 255);
+      }
+      doc.rect(20, y, 170, 10, 'F');
+      
+      // Add cell content - convert points to string
+      doc.text((index + 1).toString(), 30, y + 7);
+      doc.text(story.text, 70, y + 7);
+      doc.text(story.points ? story.points.toString() : '-', 150, y + 7);
+      
+      y += 10;
+    });
+    
+    // Save the PDF
+    doc.save(`sprint-planning-${sprintDetails.sprintName}.pdf`);
+  };
+
+  // Add this function inside the App component
+  const handleStoryPointEdit = (storyId, newPoints) => {
+    if (isMaster) {
+      // Update local state
+      setSprintDetails(prev => ({
+        ...prev,
+        stories: prev.stories.map(story => 
+          story.id === storyId ? { ...story, points: newPoints } : story
+        )
+      }))
+
+      // Update Firebase
+      const roomRef = ref(database, `rooms/${roomId}`)
+      update(roomRef, {
+        master: {
+          ...sprintDetails,
+          stories: sprintDetails.stories.map(story => ({
+            id: story.id,
+            text: story.text,
+            points: story.id === storyId ? newPoints : story.points
+          }))
+        }
+      })
+    }
+  }
+
   return (
     <Router>
       <Routes>
@@ -894,8 +1078,21 @@ function App() {
                           <span>{story.text}</span>
                         )}
                         <div className="story-actions">
-                          {story.points !== undefined && (
-                            <span className="story-points">Points: {story.points}</span>
+                          {isMaster ? (
+                            <div className="story-points-edit">
+                              <input
+                                type="number"
+                                value={story.points || ''}
+                                onChange={(e) => handleStoryPointEdit(story.id, e.target.value ? parseInt(e.target.value) : null)}
+                                className="story-points-input"
+                                placeholder="Points"
+                                min="0"
+                              />
+                            </div>
+                          ) : (
+                            story.points !== undefined && (
+                              <span className="story-points">Points: {story.points}</span>
+                            )
                           )}
                           {isMaster && (
                             <>
@@ -922,6 +1119,16 @@ function App() {
                       </div>
                     ))}
                   </div>
+                  {isMaster && (
+                    <div className="download-section">
+                      <button 
+                        className="download-pdf-btn"
+                        onClick={() => generatePDF(sprintDetails)}
+                      >
+                        Download PDF
+                      </button>
+                    </div>
+                  )}
                 </div>
               </section>
             )}
@@ -940,6 +1147,14 @@ function App() {
             {isPokerStarted && roomId && roomStatus === "voting" && !isMaster && (
         <section className="sprint-points-section">
           <h2>Select Story Points</h2>
+                {isTimerRunning && (
+                  <div className="slave-timer-display">
+                    <span className="slave-timer-label">Time Left:</span>
+                    <span className={`slave-timer-value ${timeLeft <= 5 ? 'danger' : timeLeft <= 10 ? 'warning' : ''}`}>
+                      {timeLeft}s
+                    </span>
+                  </div>
+                )}
           <div className="points-container">
             {["1", "2", "3", "5", "8", "13", "21", "?"].map((point) => (
               <div
@@ -957,42 +1172,63 @@ function App() {
       {/* 4. Stories Table Section */}
             {isPokerStarted && roomId && (
         <section className="stories-table-section">
-                <h2>Participants</h2>
-                {renderParticipantsTable()}
-                {isMaster && (
-                  <div className="table-controls">
-                    {!showHappinessSection ? (
-                      <>
-                        <button 
-                          className="show-happiness-btn control-btn" 
-                          onClick={() => {
-                            const roomRef = ref(database, `rooms/${roomId}`)
-                            update(roomRef, {
-                              showHappinessSection: true,
-                              isHappinessRevealed: false
-                            })
-                          }}
-                        >
-                          Show Happiness Survey
-                        </button>
-                        {roomStatus === "voting" && (
-                          <button className="reveal-btn control-btn" onClick={revealVotes}>
-                            Reveal Votes
-                          </button>
-                        )}
-                      </>
-                    ) : (
-                      <button 
-                        className="reveal-happiness-btn control-btn" 
-                        onClick={revealHappiness}
-                      >
-                        Reveal Happiness Feedback
+          <div className="stories-table">
+            <div className="stories-table-header">
+              <div className="stories-table-title"></div>
+              <div className="stories-table-controls">
+                <div className="participants-title">
+                  Participants
+                  {isMaster && (
+                    <div className="timer-controls">
+                      <button className="timer-reduce-btn" onClick={handleReduceTime}>-</button>
+                      <span className={`timer-display ${timeLeft <= 5 ? 'danger' : timeLeft <= 10 ? 'warning' : ''}`}>
+                        {timeLeft}s
+                      </span>
+                      <button className="timer-add-btn" onClick={handleAddTime}>+</button>
+                      {!isTimerRunning && (
+                        <button className="timer-start-btn" onClick={handleStartTimer}>Start</button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+            {renderParticipantsTable()}
+            {isMaster && (
+              <div className="table-controls">
+                {!showHappinessSection ? (
+                  <>
+                    <button 
+                      className="show-happiness-btn control-btn" 
+                      onClick={() => {
+                        const roomRef = ref(database, `rooms/${roomId}`)
+                        update(roomRef, {
+                          showHappinessSection: true,
+                          isHappinessRevealed: false
+                        })
+                      }}
+                    >
+                      Show Happiness Survey
+                    </button>
+                    {roomStatus === "voting" && (
+                      <button className="reveal-btn control-btn" onClick={revealVotes}>
+                        Reveal Votes
                       </button>
                     )}
-                  </div>
+                  </>
+                ) : (
+                  <button 
+                    className="reveal-happiness-btn control-btn" 
+                    onClick={revealHappiness}
+                  >
+                    Reveal Happiness Feedback
+                  </button>
                 )}
-              </section>
+              </div>
             )}
+          </div>
+        </section>
+      )}
 
             {/* End Planning Button - Only show for master */}
             {isPokerStarted && roomId && isMaster && (
